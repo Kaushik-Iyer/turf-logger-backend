@@ -86,34 +86,35 @@ async def get_turf_near_me(db=Depends(get_db)):
 
 @router.get("/players/{day}/{month}/{goals}/{assists}")
 async def get_players(day: int, month: int, goals: int, assists: int):
-    df=pd.read_csv('backend/appearances.csv')
-    df['date'] = pd.to_datetime(df['date'])
-    df['month_day'] = df['date'].apply(lambda x: (x.month, x.day))
-    filtered_df = df[df['month_day'] == (month, day)]
+    return {"Feature incomplete": "This feature is not yet implemented."}
+    # df=pd.read_csv('backend/appearances.csv')
+    # df['date'] = pd.to_datetime(df['date'])
+    # df['month_day'] = df['date'].apply(lambda x: (x.month, x.day))
+    # filtered_df = df[df['month_day'] == (month, day)]
     
-    # Filter players who have exactly the same number of goals and assists as specified
-    filtered_df = filtered_df[(filtered_df['goals'] == goals) & (filtered_df['assists'] == assists)]
+    # # Filter players who have exactly the same number of goals and assists as specified
+    # filtered_df = filtered_df[(filtered_df['goals'] == goals) & (filtered_df['assists'] == assists)]
     
-    # Get the first player and game_id
-    first_player = filtered_df.iloc[0]['player_name']
-    game_id = filtered_df.iloc[0]['game_id']
+    # # Get the first player and game_id
+    # first_player = filtered_df.iloc[0]['player_name']
+    # game_id = filtered_df.iloc[0]['game_id']
 
-    if pd.isnull(first_player) or pd.isnull(game_id):
-        return {"player": "No player found", "home_team": "No team found", "away_team": "No team found"}
+    # if pd.isnull(first_player) or pd.isnull(game_id):
+    #     return {"player": "No player found", "home_team": "No team found", "away_team": "No team found"}
 
-    # Load the other CSV file
-    df2 = pd.read_csv('backend/games.csv')
+    # # Load the other CSV file
+    # df2 = pd.read_csv('backend/games.csv')
 
-    # Find the row with the matching game_id
-    game_row = df2[df2['game_id'] == game_id].iloc[0]
+    # # Find the row with the matching game_id
+    # game_row = df2[df2['game_id'] == game_id].iloc[0]
 
-    # Get the home_team_name and away_team_name
-    home_team_name = game_row['home_club_name']
-    away_team_name = game_row['away_club_name']
-    date=game_row['date']
+    # # Get the home_team_name and away_team_name
+    # home_team_name = game_row['home_club_name']
+    # away_team_name = game_row['away_club_name']
+    # date=game_row['date']
 
 
-    return {"player": first_player, "home_team": home_team_name, "away_team": away_team_name, "date": date}
+    # return {"player": first_player, "home_team": home_team_name, "away_team": away_team_name, "date": date}
 
 
 #API to return live match scores

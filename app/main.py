@@ -64,7 +64,6 @@ def get_current_user(request: Request):
 @app.on_event("startup")
 async def on_startup():
     app.state.client = AsyncIOMotorClient(uri)
-    app.state.player = pd.read_csv('backend/appearances.csv')
     app.state.users = app.state.client["TestDB"]["users"]
 
 @app.get('/login')
