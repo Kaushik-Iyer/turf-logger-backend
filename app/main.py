@@ -51,7 +51,8 @@ class TokenData(BaseModel):
 
 app = FastAPI()
 origins = [
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "https://turf-logger-frontend.pages.dev",
 ]
 app.include_router(players.router)
 app.include_router(comparisons.router)
