@@ -4,21 +4,26 @@ from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
 from .routers import players, comparisons
 import os
-from starlette.responses import RedirectResponse, FileResponse
+from starlette.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 import pandas as pd
 from starlette.config import Config
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-import pdb
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from fastapi.responses import JSONResponse
+from jose import JWTError, jwt
+import requests
+from fastapi.security import OAuth2PasswordBearer
 
 load_dotenv()
 maps_api_key=os.getenv('MAPS_API_KEY')
 football_data_org_api_key=os.getenv('FOOTBALL_DATA_ORG_API_KEY')
-
-
+secret_key=os.getenv('SECRET_KEY')
 mongo_password=os.getenv('MONGO_PASSWORD')
+algorithm="HS256"
 uri = f"mongodb+srv://kaushikiyer:{mongo_password}@project.sfu2jan.mongodb.net/?retryWrites=true&w=majority&appName=Project"
 
 def get_current_user(request: Request):
@@ -27,11 +32,22 @@ def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail='Not authenticated')
     return user
 
+def document_to_dict(document):
+    # Convert ObjectId to str
+    document['_id'] = str(document['_id'])
+    return document
+
 class User(BaseModel):
-    google_id: str
     email: str
     name: str
     profile_pic_url: str
+
+class Token(BaseModel):
+    access_token: str
+
+class TokenData(BaseModel):
+    email: str
+
 
 app = FastAPI()
 origins = [
@@ -55,48 +71,51 @@ oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
 )
 
-def get_current_user(request: Request):
-    user = request.session.get('user')
-    if user is None:
-        return None
-    return user
+def verify_google_token(token:str):
+    try:
+        response=requests.get('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        raise HTTPException(status_code=401, detail='Invalid token')
+
 
 @app.on_event("startup")
 async def on_startup():
     app.state.client = AsyncIOMotorClient(uri)
+    # app.state.player = pd.read_csv('backend/appearances.csv')
     app.state.users = app.state.client["TestDB"]["users"]
 
-@app.get('/login')
-async def login(request: Request):
-    redirect_uri = request.url_for('auth')  # Get the URL for the /auth endpoint
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+@app.post('/login')
+async def login(user: User, request: Request):
+    db_user = await app.state.users.find_one({'email': user.email})
+    if db_user is None:
+        raise HTTPException(status_code=401, detail='User not found')
+    db_user = document_to_dict(db_user)
+    request.session['user'] = db_user
+    return {"message": "Logged in"}
 
-@app.get('/auth')
-async def auth(request: Request):
-    token = await oauth.google.authorize_access_token(request)
-    user_info = token.get('userinfo')
-    request.session['user'] = user_info
-
-    user=User(google_id=user_info['sub'], email=user_info['email'], name=user_info['name'], profile_pic_url=user_info['picture'])
-    await app.state.users.update_one({'google_id': user.google_id}, {'$set': user.dict()}, upsert=True)
-    return RedirectResponse(url='http://localhost:3000/players')
-
+@app.post('/auth/google')
+async def auth_google(token: Token):
+    google_data = verify_google_token(token.access_token)
+    if not google_data:
+        raise HTTPException(status_code=401, detail='Invalid token')
+    user = await app.state.users.find_one({'email': google_data['email']})
+    if user is None:
+        user = {
+            'email': google_data['email'],
+            'name': google_data['name'],
+            'profile_pic_url': google_data['picture']
+        }
+        await app.state.users.insert_one(user)
+    else:
+        email = google_data['email']
+        payload = {'email': email}
+        token = jwt.encode(payload, secret_key, algorithm=algorithm)
+        return {'access_token': token, 'token_type': 'bearer'}
+    
 @app.get('/logout')
 async def logout(request: Request):
     request.session.pop('user', None)
     return {"message": "Logged out"}
 
-@app.get('/user')
-async def user(request: Request):
-    user = request.session.get('user')
-    if user is None:
-        raise HTTPException(status_code=401, detail='Not authenticated')
-    return user
-
-@app.get('/')
-async def root(current_user=Depends(get_current_user)):
-    if current_user:
-        return {"loggedIn": True}
-    else:
-        return {"loggedIn": False}
-#check if user is logged in, redirect to /players if logged in, else redirect to /login

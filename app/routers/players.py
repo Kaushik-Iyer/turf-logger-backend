@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from .temp import fix_object_id, Player, get_current_user
+from .temp import fix_object_id, Player, get_current_user, verify_jwt
 from datetime import datetime
 import pandas as pd
 from fastapi.responses import HTMLResponse
@@ -17,7 +17,7 @@ def get_db(request: Request):
 router = APIRouter()
 
 @router.post("/entries")
-async def create_player(player: Player, db=Depends(get_db),user=Depends(get_current_user)):
+async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_jwt)):
     collection = db["entries"]
     player_data = player.model_dump()
     player_data["created_at"] = datetime.now()
@@ -38,7 +38,7 @@ async def create_player(player: Player, db=Depends(get_db),user=Depends(get_curr
     return {"id": str(result.inserted_id)}
 
 @router.get("/players")
-async def get_players(db=Depends(get_db),user=Depends(get_current_user)):
+async def get_players(db=Depends(get_db),user=Depends(verify_jwt)):
     collection = db["entries"]
     players = []
     async for player in collection.find({"email": user['email']}).sort("created_at", -1):
@@ -46,7 +46,7 @@ async def get_players(db=Depends(get_db),user=Depends(get_current_user)):
     return players
 
 @router.get("/visualize/", response_class=HTMLResponse)
-async def visualize(db=Depends(get_db),current_user=Depends(get_current_user)):
+async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
     collection = db["entries"]
 
     # Find all records for the current user this month
@@ -110,9 +110,3 @@ async def home_page(current_user= Depends(get_current_user),db=Depends(get_db)):
     if not players:
         return "No records found for this player"
     return players
-
-
-
-
-
-
