@@ -53,6 +53,7 @@ app = FastAPI()
 origins = [
     "http://localhost:3000",
     "https://turf-logger-frontend.pages.dev",
+    "https://myfootballstats.social"
 ]
 app.include_router(players.router)
 app.include_router(comparisons.router)
