@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 from starlette.requests import Request
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from .temp import fix_object_id, get_lat_long, maps_api_key
 import requests
@@ -70,7 +69,7 @@ async def get_turf_near_me(db=Depends(get_db)):
         'X-Goog-FieldMask':'places.displayName,places.location,places.googleMapsUri'
     }
     response=requests.post(base_url,params=params,json=request_body,headers=headers).json()
-    #save the results in the database
+    # save the results in the database
     for turf in response['places']:
         latitude = turf['location']['latitude']
         longitude = turf['location']['longitude']

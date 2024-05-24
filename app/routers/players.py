@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
-from .temp import fix_object_id, Player, get_current_user, verify_jwt
+from .temp import fix_object_id, Player, verify_jwt
 from datetime import datetime
-import pandas as pd
 from fastapi.responses import HTMLResponse
 import matplotlib.pyplot as plt
 from matplotlib.dates import date2num, DateFormatter
@@ -22,10 +21,13 @@ async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_j
     player_data = player.model_dump()
     player_data["created_at"] = datetime.now()
     player_data["email"] = user['email']
-    # Find existing record with the same email and created_at
+    # Find existing record with the same email and created_at date
     existing_record = await collection.find_one({
         "email": user['email'],
-        "created_at": player_data["created_at"]
+        "created_at": {
+            "$gte": player_data["created_at"].replace(hour=0, minute=0, second=0, microsecond=0),
+            "$lt": player_data["created_at"].replace(hour=23, minute=59, second=59, microsecond=999999)
+        }
     })
     if existing_record: # Update the existing record
         await collection.update_one({
@@ -100,13 +102,3 @@ async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
 
     return html
 
-@router.get("/user")
-async def home_page(current_user= Depends(get_current_user),db=Depends(get_db)):
-    #find all entries in players collection of current user email
-    collection=db["entries"]
-    players=[]
-    async for player in collection.find({"email":current_user['email']}):
-        players.append(fix_object_id(player))
-    if not players:
-        return "No records found for this player"
-    return players

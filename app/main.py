@@ -110,11 +110,10 @@ async def auth_google(token: Token):
             'profile_pic_url': google_data['picture']
         }
         await app.state.users.insert_one(user)
-    else:
-        email = google_data['email']
-        payload = {'email': email}
-        token = jwt.encode(payload, secret_key, algorithm=algorithm)
-        return {'access_token': token, 'token_type': 'bearer'}
+    email = google_data['email']
+    payload = {'email': email}
+    token = jwt.encode(payload, secret_key, algorithm=algorithm)
+    return {'access_token': token, 'token_type': 'bearer'}
     
 @app.get('/logout')
 async def logout(request: Request):
