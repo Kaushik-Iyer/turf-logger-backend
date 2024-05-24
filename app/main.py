@@ -102,15 +102,23 @@ async def auth_google(token: Token):
     google_data = verify_google_token(token.access_token)
     if not google_data:
         raise HTTPException(status_code=401, detail='Invalid token')
-    user = await app.state.users.find_one({'email': google_data['email']})
+
+    # Get user's profile information from Google
+    headers = {'Authorization': f'Bearer {token.access_token}'}
+    response = requests.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
+    if response.status_code != 200:
+        raise HTTPException(status_code=401, detail='Failed to get user info')
+    user_info = response.json()
+
+    user = await app.state.users.find_one({'email': user_info['email']})
     if user is None:
         user = {
-            'email': google_data['email'],
-            'name': google_data['name'],
-            'profile_pic_url': google_data['picture']
+            'email': user_info['email'],
+            'name': user_info['name'],
+            'profile_pic_url': user_info['picture']
         }
         await app.state.users.insert_one(user)
-    email = google_data['email']
+    email = user_info['email']
     payload = {'email': email}
     token = jwt.encode(payload, secret_key, algorithm=algorithm)
     return {'access_token': token, 'token_type': 'bearer'}
