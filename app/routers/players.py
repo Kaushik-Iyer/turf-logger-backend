@@ -8,6 +8,10 @@ import io
 import base64
 import urllib.parse
 from starlette.requests import Request
+from pydantic import BaseModel
+
+class Suggestion(BaseModel):
+    suggestion: str
 
 def get_db(request: Request):
     db = request.app.state.client["TestDB"]
@@ -102,3 +106,10 @@ async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
 
     return html
 
+@router.post('/suggestions')
+async def create_suggestion(suggestion: Suggestion,user=Depends(verify_jwt),db=Depends(get_db)):
+    collection = db["suggestions"]
+    suggestion_data = suggestion.dict()
+    suggestion_data["email"] = user['email']
+    result = await collection.insert_one(suggestion_data)
+    return {"id": str(result.inserted_id)}

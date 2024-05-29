@@ -34,9 +34,6 @@ def document_to_dict(document):
 class Token(BaseModel):
     access_token: str
 
-class Suggestion(BaseModel):
-    suggestion: str
-
 app = FastAPI()
 origins = [
     "http://localhost:3000",
@@ -95,12 +92,3 @@ async def auth_google(token: Token):
 async def logout(request: Request):
     request.session.pop('user', None)
     return {"message": "Logged out"}
-
-@app.post('/suggestions')
-async def create_suggestion(suggestion: Suggestion,user=Depends(get_current_user)):
-    db = app.state.client["TestDB"]
-    collection = db["suggestions"]
-    suggestion_data = suggestion.dict()
-    suggestion_data["email"] = user['email']
-    result = await collection.insert_one(suggestion_data)
-    return {"id": str(result.inserted_id)}
