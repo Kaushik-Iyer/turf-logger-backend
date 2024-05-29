@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from .temp import fix_object_id, Player, verify_jwt
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi.responses import HTMLResponse
 import matplotlib.pyplot as plt
 from matplotlib.dates import date2num, DateFormatter
@@ -25,8 +25,8 @@ async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_j
     existing_record = await collection.find_one({
         "email": user['email'],
         "created_at": {
-            "$gte": player_data["created_at"].replace(hour=0, minute=0, second=0, microsecond=0),
-            "$lt": player_data["created_at"].replace(hour=23, minute=59, second=59, microsecond=999999)
+            "$gte": datetime(player_data["created_at"].year, player_data["created_at"].month, player_data["created_at"].day),
+            "$lt": datetime(player_data["created_at"].year, player_data["created_at"].month, player_data["created_at"].day) + timedelta(days=1)
         }
     })
     if existing_record: # Update the existing record
@@ -47,7 +47,7 @@ async def get_players(db=Depends(get_db),user=Depends(verify_jwt)):
         players.append(fix_object_id(player))
     return players
 
-@router.get("/visualize/", response_class=HTMLResponse)
+@router.get("/visualize/", response_class=HTMLResponse)  # change matplotlib to plotly
 async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
     collection = db["entries"]
 

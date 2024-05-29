@@ -1,22 +1,16 @@
-from fastapi import FastAPI,Depends,HTTPException
+from fastapi import FastAPI,HTTPException
 from starlette.requests import Request
-from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
-from .routers import players, comparisons
+from fastapi import Depends
+from .routers import players, comparisons, injuries
 import os
-from starlette.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
-import pandas as pd
-from starlette.config import Config
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from google.oauth2 import id_token
 from google.auth.transport import requests
-from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
+from jose import jwt
 import requests
-from fastapi.security import OAuth2PasswordBearer
 
 load_dotenv()
 maps_api_key=os.getenv('MAPS_API_KEY')
@@ -37,17 +31,11 @@ def document_to_dict(document):
     document['_id'] = str(document['_id'])
     return document
 
-class User(BaseModel):
-    email: str
-    name: str
-    profile_pic_url: str
-
 class Token(BaseModel):
     access_token: str
 
-class TokenData(BaseModel):
-    email: str
-
+class Suggestion(BaseModel):
+    suggestion: str
 
 app = FastAPI()
 origins = [
@@ -57,21 +45,9 @@ origins = [
 ]
 app.include_router(players.router)
 app.include_router(comparisons.router)
+app.include_router(injuries.router)
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(SessionMiddleware, secret_key= os.getenv('SECRET_KEY'))
-config=Config('.env')
-oauth=OAuth(config)
-oauth.register(
-    name='google',
-    client_id=os.getenv('GOOGLE_CLIENT_ID'),
-    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
-    authorize_params=None,
-    access_token_params=None,
-    refresh_token_url=None,
-    redirect_uri='http://localhost:8000/auth',  
-    client_kwargs={'scope': 'openid email profile'},
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-)
 
 def verify_google_token(token:str):
     try:
@@ -88,14 +64,6 @@ async def on_startup():
     # app.state.player = pd.read_csv('backend/appearances.csv')
     app.state.users = app.state.client["TestDB"]["users"]
 
-@app.post('/login')
-async def login(user: User, request: Request):
-    db_user = await app.state.users.find_one({'email': user.email})
-    if db_user is None:
-        raise HTTPException(status_code=401, detail='User not found')
-    db_user = document_to_dict(db_user)
-    request.session['user'] = db_user
-    return {"message": "Logged in"}
 
 @app.post('/auth/google')
 async def auth_google(token: Token):
@@ -128,3 +96,11 @@ async def logout(request: Request):
     request.session.pop('user', None)
     return {"message": "Logged out"}
 
+@app.post('/suggestions')
+async def create_suggestion(suggestion: Suggestion,user=Depends(get_current_user)):
+    db = app.state.client["TestDB"]
+    collection = db["suggestions"]
+    suggestion_data = suggestion.dict()
+    suggestion_data["email"] = user['email']
+    result = await collection.insert_one(suggestion_data)
+    return {"id": str(result.inserted_id)}
