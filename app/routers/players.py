@@ -10,17 +10,21 @@ import urllib.parse
 from starlette.requests import Request
 from pydantic import BaseModel
 
+
 class Suggestion(BaseModel):
     suggestion: str
+
 
 def get_db(request: Request):
     db = request.app.state.client["TestDB"]
     return db
 
+
 router = APIRouter()
 
+
 @router.post("/entries")
-async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_jwt)):
+async def create_player(player: Player, db=Depends(get_db), user=Depends(verify_jwt)):
     collection = db["entries"]
     player_data = player.model_dump()
     player_data["created_at"] = datetime.now()
@@ -29,11 +33,13 @@ async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_j
     existing_record = await collection.find_one({
         "email": user['email'],
         "created_at": {
-            "$gte": datetime(player_data["created_at"].year, player_data["created_at"].month, player_data["created_at"].day),
-            "$lt": datetime(player_data["created_at"].year, player_data["created_at"].month, player_data["created_at"].day) + timedelta(days=1)
+            "$gte": datetime(player_data["created_at"].year, player_data["created_at"].month,
+                             player_data["created_at"].day),
+            "$lt": datetime(player_data["created_at"].year, player_data["created_at"].month,
+                            player_data["created_at"].day) + timedelta(days=1)
         }
     })
-    if existing_record: # Update the existing record
+    if existing_record:  # Update the existing record
         await collection.update_one({
             "_id": existing_record["_id"]
         }, {
@@ -43,16 +49,18 @@ async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_j
     result = await collection.insert_one(player_data)
     return {"id": str(result.inserted_id)}
 
+
 @router.get("/players")
-async def get_players(db=Depends(get_db),user=Depends(verify_jwt)):
+async def get_players(db=Depends(get_db), user=Depends(verify_jwt)):
     collection = db["entries"]
     players = []
     async for player in collection.find({"email": user['email']}).sort("created_at", -1):
         players.append(fix_object_id(player))
     return players
 
+
 @router.get("/visualize/", response_class=HTMLResponse)  # change matplotlib to plotly
-async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
+async def visualize(db=Depends(get_db), current_user=Depends(verify_jwt)):
     collection = db["entries"]
 
     # Find all records for the current user this month
@@ -83,7 +91,7 @@ async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
     # Create a list of goals and assists
     goals = [record["goals"] for record in player_records]
     assists = [record["assists"] for record in player_records]
-    dates= [date2num(record["created_at"]) for record in player_records]
+    dates = [date2num(record["created_at"]) for record in player_records]
     plt.figure(figsize=(12, 6))
     # Create a line graph
     plt.plot_date(dates, goals, label='Goals', linestyle='solid', marker='None')
@@ -106,8 +114,9 @@ async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
 
     return html
 
+
 @router.post('/suggestions')
-async def create_suggestion(suggestion: Suggestion,user=Depends(verify_jwt),db=Depends(get_db)):
+async def create_suggestion(suggestion: Suggestion, user=Depends(verify_jwt), db=Depends(get_db)):
     collection = db["suggestions"]
     suggestion_data = suggestion.dict()
     suggestion_data["email"] = user['email']

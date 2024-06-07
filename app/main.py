@@ -1,24 +1,23 @@
-from fastapi import FastAPI,HTTPException
+from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 from dotenv import load_dotenv
-from fastapi import Depends
 from .routers import players, comparisons, injuries
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from google.auth.transport import requests
 from jose import jwt
 import requests
 
 load_dotenv()
-maps_api_key=os.getenv('MAPS_API_KEY')
-football_data_org_api_key=os.getenv('FOOTBALL_DATA_ORG_API_KEY')
-secret_key=os.getenv('SECRET_KEY')
-mongo_password=os.getenv('MONGO_PASSWORD')
-algorithm="HS256"
+maps_api_key = os.getenv('MAPS_API_KEY')
+football_data_org_api_key = os.getenv('FOOTBALL_DATA_ORG_API_KEY')
+secret_key = os.getenv('SECRET_KEY')
+mongo_password = os.getenv('MONGO_PASSWORD')
+algorithm = "HS256"
 uri = f"mongodb+srv://kaushikiyer:{mongo_password}@project.sfu2jan.mongodb.net/?retryWrites=true&w=majority&appName=Project"
+
 
 def get_current_user(request: Request):
     user = request.session.get('user')
@@ -26,13 +25,16 @@ def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail='Not authenticated')
     return user
 
+
 def document_to_dict(document):
     # Convert ObjectId to str
     document['_id'] = str(document['_id'])
     return document
 
+
 class Token(BaseModel):
     access_token: str
+
 
 app = FastAPI()
 origins = [
@@ -43,15 +45,17 @@ origins = [
 app.include_router(players.router)
 app.include_router(comparisons.router)
 app.include_router(injuries.router)
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-app.add_middleware(SessionMiddleware, secret_key= os.getenv('SECRET_KEY'))
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"],
+                   allow_headers=["*"])
+app.add_middleware(SessionMiddleware, secret_key=os.getenv('SECRET_KEY'))
 
-def verify_google_token(token:str):
+
+def verify_google_token(token: str):
     try:
-        response=requests.get('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
+        response = requests.get('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + token)
         response.raise_for_status()
         return response.json()
-    except requests.RequestException as e:
+    except requests.RequestException:
         raise HTTPException(status_code=401, detail='Invalid token')
 
 
@@ -87,7 +91,8 @@ async def auth_google(token: Token):
     payload = {'email': email}
     token = jwt.encode(payload, secret_key, algorithm=algorithm)
     return {'access_token': token, 'token_type': 'bearer'}
-    
+
+
 @app.get('/logout')
 async def logout(request: Request):
     request.session.pop('user', None)
