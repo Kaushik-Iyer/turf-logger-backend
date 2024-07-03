@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket
 from starlette.requests import Request
 from datetime import datetime, timedelta
-from .temp import fix_object_id, get_lat_long, maps_api_key
+from .temp import fix_object_id, maps_api_key
 import requests
 import pandas as pd
 import os
-
+import json
+import asyncio
 
 def get_db(request: Request):
     db = request.app.state.client["TestDB"]
@@ -46,9 +47,7 @@ async def get_player_leaderboard(period: str, db=Depends(get_db)):
 #Future API calls will be made to the database instead of the Google Places API. If the data is not found in the database,
 #then the API call will be made to the Google Places API.
 @router.get("/turf_near_me")
-async def get_turf_near_me(db=Depends(get_db)):
-    lat, long = get_lat_long()
-
+async def get_turf_near_me(lat: float, long: float):
     base_url = f'https://places.googleapis.com/v1/places:searchText'
     params = {
         'key': maps_api_key,
@@ -70,16 +69,6 @@ async def get_turf_near_me(db=Depends(get_db)):
         'X-Goog-FieldMask': 'places.displayName,places.location,places.googleMapsUri'
     }
     response = requests.post(base_url, params=params, json=request_body, headers=headers).json()
-    # save the results in the database
-    for turf in response['places']:
-        latitude = turf['location']['latitude']
-        longitude = turf['location']['longitude']
-        turf['location'] = {
-            'type': 'Point',
-            'coordinates': [longitude, latitude]
-        }
-        db["turfs"].insert_one(turf)
-
     return response
 
 
@@ -114,23 +103,37 @@ async def get_players(day: int, month: int, goals: int, assists: int):
 
     # return {"player": first_player, "home_team": home_team_name, "away_team": away_team_name, "date": date}
 
+@router.websocket("/live_scores")
+async def get_live_scores_websocket(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        uri = 'https://api.football-data.org/v4/matches'
+        headers = {'X-Auth-Token': football_data_org_api_key}
+        response = requests.get(uri, headers=headers)
+        matches = []
+        for match in response.json()['matches']:
+            match_info = {
+                'time': match['utcDate'],
+                'homeTeam': match['homeTeam']['name'],
+                'awayTeam': match['awayTeam']['name'],
+                'score': match['score']['fullTime'],
+                'homeCrest': match['homeTeam']['crest'],
+                'awayCrest': match['awayTeam']['crest']
+            }
+            matches.append(match_info)
 
-#API to return live match scores
-@router.get("/live_scores")
-async def get_live_scores():
-    uri = 'https://api.football-data.org/v4/matches'
-    headers = {'X-Auth-Token': football_data_org_api_key}
+        await websocket.send_json(matches)
+        await asyncio.sleep(600)
 
-    response = requests.get(uri, headers=headers)
-    matches = []
-    for match in response.json()['matches']:
-        match_info = {
-            'time': match['utcDate'],
-            'homeTeam': match['homeTeam']['name'],
-            'awayTeam': match['awayTeam']['name'],
-            'score': match['score']['fullTime'],
-            'homeCrest': match['homeTeam']['crest'],
-            'awayCrest': match['awayTeam']['crest']
-        }
-        matches.append(match_info)
-    return matches
+@router.websocket("/latest_entries")
+async def get_latest_entries_websocket(websocket: WebSocket, db=Depends(get_db)):
+    await websocket.accept()
+    while True:
+        collection = db["entries"]
+        entries = []
+        # Get the latest 5 entries
+        async for entry in collection.find().sort("created_at", -1).limit(5):
+            entry['name'] = await db['users'].find_one({'email': entry['email']})['name']
+            entries.append(fix_object_id(entry))
+        await websocket.send_json(entries)
+        await asyncio.sleep(60)

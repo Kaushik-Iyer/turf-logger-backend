@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from .players import get_db
 from .temp import verify_jwt, fix_object_id
+from datetime import datetime
 
 router = APIRouter()
 
@@ -15,8 +16,8 @@ class InjurySpot(BaseModel):
         x_coordinate (float): The x-coordinate of the injury spot.
         y_coordinate (float): The y-coordinate of the injury spot.
     """
-    x_coordinate: float
-    y_coordinate: float
+    x: float
+    y: float
 
 # Define the Injury model
 class Injury(BaseModel):
@@ -29,7 +30,7 @@ class Injury(BaseModel):
     """
     injury_type: str
     duration: int
-    injury_spots: List[InjurySpot] = []
+    location: InjurySpot
 
 
 
@@ -51,13 +52,13 @@ async def post_injury(injury: Injury, user=Depends(verify_jwt), db=Depends(get_d
     collection = db["injuries"]
     injury = injury.dict()
     injury["email"] = user["email"]
+    injury["created_at"] = datetime.now()
     result = await collection.insert_one(injury)
     injury_id = str(result.inserted_id)
     injury_spot_collection = db["injury_spots"]
-    for spot in injury["injury_spots"]:
-        injury_spot_data = spot.dict()
-        injury_spot_data["injury_id"] = injury_id
-        await injury_spot_collection.insert_one(injury_spot_data)
+    injury_spot_data = injury["location"]
+    injury_spot_data["injury_id"] = injury_id
+    await injury_spot_collection.insert_one(injury_spot_data)
 
     return {"id": injury_id}
 
@@ -78,6 +79,10 @@ async def get_injuries(db=Depends(get_db), user=Depends(verify_jwt)):
     injuries = []
     async for injury in collection.find({"email": user["email"]}):
         injuries.append(fix_object_id(injury))
+        injury_spots = db["injury_spots"].find({"injury_id": str(injury["_id"])})
+        injury["injury_spots"] = []
+        async for spot in injury_spots:
+            injury["injury_spots"].append(fix_object_id(spot))
     return injuries
 
 

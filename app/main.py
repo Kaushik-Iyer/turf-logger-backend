@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 from dotenv import load_dotenv
-from .routers import players, comparisons, injuries
+from .routers import players, comparisons, injuries, pitch
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from starlette.middleware.sessions import SessionMiddleware
@@ -36,7 +36,7 @@ class Token(BaseModel):
     access_token: str
 
 
-app = FastAPI()
+app = FastAPI(debug=True)
 origins = [
     "http://localhost:3000",
     "https://turf-logger-frontend.pages.dev",
@@ -45,6 +45,7 @@ origins = [
 app.include_router(players.router)
 app.include_router(comparisons.router)
 app.include_router(injuries.router)
+app.include_router(pitch.router)
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"],
                    allow_headers=["*"])
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SECRET_KEY'))
