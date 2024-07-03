@@ -3,6 +3,7 @@ from starlette.requests import Request
 from dotenv import load_dotenv
 from .routers import players, comparisons, injuries, pitch
 import os
+from starlette.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
@@ -16,6 +17,7 @@ football_data_org_api_key = os.getenv('FOOTBALL_DATA_ORG_API_KEY')
 secret_key = os.getenv('SECRET_KEY')
 mongo_password = os.getenv('MONGO_PASSWORD')
 algorithm = "HS256"
+
 uri = f"mongodb+srv://kaushikiyer:{mongo_password}@project.sfu2jan.mongodb.net/?retryWrites=true&w=majority&appName=Project"
 
 
@@ -37,6 +39,7 @@ class Token(BaseModel):
 
 
 app = FastAPI(debug=True)
+
 origins = [
     "http://localhost:3000",
     "https://turf-logger-frontend.pages.dev",
@@ -59,13 +62,11 @@ def verify_google_token(token: str):
     except requests.RequestException:
         raise HTTPException(status_code=401, detail='Invalid token')
 
-
 @app.on_event("startup")
 async def on_startup():
     app.state.client = AsyncIOMotorClient(uri)
     # app.state.player = pd.read_csv('backend/appearances.csv')
     app.state.users = app.state.client["TestDB"]["users"]
-
 
 @app.post('/auth/google')
 async def auth_google(token: Token):
@@ -94,6 +95,26 @@ async def auth_google(token: Token):
     return {'access_token': token, 'token_type': 'bearer'}
 
 
+
+@app.post('/auth/google')
+async def auth_google(token: Token):
+    google_data = verify_google_token(token.access_token)
+    if not google_data:
+        raise HTTPException(status_code=401, detail='Invalid token')
+    user = await app.state.users.find_one({'email': google_data['email']})
+    if user is None:
+        user = {
+            'email': google_data['email'],
+            'name': google_data['name'],
+            'profile_pic_url': google_data['picture']
+        }
+        await app.state.users.insert_one(user)
+    else:
+        email = google_data['email']
+        payload = {'email': email}
+        token = jwt.encode(payload, secret_key, algorithm=algorithm)
+        return {'access_token': token, 'token_type': 'bearer'}
+    
 @app.get('/logout')
 async def logout(request: Request):
     request.session.pop('user', None)
