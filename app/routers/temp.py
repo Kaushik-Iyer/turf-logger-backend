@@ -47,13 +47,13 @@ def verify_jwt(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 class Player(BaseModel):
-    name: str
+    position: str
     goals: int
     assists: int
 
     def model_dump(self):
         return {
-            "name": self.name,
+            "position": self.position,
             "goals": self.goals,
             "assists": self.assists
         }

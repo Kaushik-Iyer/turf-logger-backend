@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends
-from .temp import fix_object_id, Player, get_current_user, verify_jwt
-from datetime import datetime
-import pandas as pd
-from fastapi.responses import HTMLResponse
-import matplotlib.pyplot as plt
-from matplotlib.dates import date2num, DateFormatter
-import io
-import base64
-import urllib.parse
+from .temp import fix_object_id, Player, verify_jwt
+from datetime import datetime, timedelta
+
 from starlette.requests import Request
+from pydantic import BaseModel
+from bson import ObjectId
+from typing import Optional
+from datetime import datetime
+
+
+class Suggestion(BaseModel):
+    suggestion: str
+
 
 def get_db(request: Request):
     db = request.app.state.client["TestDB"]
@@ -16,18 +19,24 @@ def get_db(request: Request):
 
 router = APIRouter()
 
+
 @router.post("/entries")
-async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_jwt)):
+async def create_player(player: Player, db=Depends(get_db), user=Depends(verify_jwt)):
     collection = db["entries"]
     player_data = player.model_dump()
     player_data["created_at"] = datetime.now()
     player_data["email"] = user['email']
-    # Find existing record with the same email and created_at
+    # Find existing record with the same email and created_at date
     existing_record = await collection.find_one({
         "email": user['email'],
-        "created_at": player_data["created_at"]
+        "created_at": {
+            "$gte": datetime(player_data["created_at"].year, player_data["created_at"].month,
+                             player_data["created_at"].day),
+            "$lt": datetime(player_data["created_at"].year, player_data["created_at"].month,
+                            player_data["created_at"].day) + timedelta(days=1)
+        }
     })
-    if existing_record: # Update the existing record
+    if existing_record:  # Update the existing record
         await collection.update_one({
             "_id": existing_record["_id"]
         }, {
@@ -37,76 +46,75 @@ async def create_player(player: Player, db=Depends(get_db),user=Depends(verify_j
     result = await collection.insert_one(player_data)
     return {"id": str(result.inserted_id)}
 
+
+# Delete a player record
+@router.delete("/entries/{player_id}")
+async def delete_player(player_id: str, db=Depends(get_db), user=Depends(verify_jwt)):
+    collection = db["entries"]
+    result = await collection.delete_one({
+        "_id": ObjectId(player_id),
+        "email": user['email']
+    })
+    if result.deleted_count == 1:
+        return {"message": "Entry deleted successfully"}
+    return {"message": "Entry not found"}
+
+
 @router.get("/players")
-async def get_players(db=Depends(get_db),user=Depends(verify_jwt)):
+async def get_players(db=Depends(get_db), user=Depends(verify_jwt),start_date: Optional[str] = None, end_date: Optional[str] = None):
     collection = db["entries"]
     players = []
-    async for player in collection.find({"email": user['email']}).sort("created_at", -1):
+    query = {
+        "email": user['email']
+    }
+    if start_date and end_date:
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        query["created_at"] = {
+            "$gte": start_date_obj,
+            "$lt": end_date_obj
+        }
+    result = await collection.find(query).sort("created_at", -1).to_list(length=100)
+    for player in result:
         players.append(fix_object_id(player))
     return players
 
-@router.get("/visualize/", response_class=HTMLResponse)
-async def visualize(db=Depends(get_db),current_user=Depends(verify_jwt)):
+
+@router.get("/visualize/") 
+async def visualize(db=Depends(get_db), current_user=Depends(verify_jwt), start_date: Optional[str] = None, end_date: Optional[str] = None):
     collection = db["entries"]
-
-    # Find all records for the current user this month
-    now = datetime.now()
-
-    # Create a datetime object representing the first day of this month
-    first_day_this_month = datetime(now.year, now.month, 1)
-
-    # Create a datetime object representing the first day of next month
-    if now.month == 12:
-        first_day_next_month = datetime(now.year + 1, 1, 1)
-    else:
-        first_day_next_month = datetime(now.year, now.month + 1, 1)
-
-    # Find all records for the current user this month
-    player_records = await collection.find({
-        "email": current_user['email'],
-        "created_at": {
-            "$gte": first_day_this_month,
-            "$lt": first_day_next_month
+    query = {
+        "email": current_user['email']
+    }
+    if start_date and end_date:
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        query["created_at"] = {
+            "$gte": start_date_obj,
+            "$lt": end_date_obj
         }
-    }).to_list(length=100)
-    # player_records = await collection.find({"email": current_user['email']}).to_list(length=100)
+    player_records = await collection.find(query).sort("created_at", 1).to_list(length=100)
 
-    if not player_records:
+    if len(player_records) < 2:
         return "No records found for this player"
 
     # Create a list of goals and assists
     goals = [record["goals"] for record in player_records]
     assists = [record["assists"] for record in player_records]
-    dates= [date2num(record["created_at"]) for record in player_records]
-    plt.figure(figsize=(12, 6))
-    # Create a line graph
-    plt.plot_date(dates, goals, label='Goals', linestyle='solid', marker='None')
-    plt.plot_date(dates, assists, label='Assists', linestyle='solid', marker='None')
-    plt.title(f'Goals and Assists for {current_user["email"]}')
-    date_format = DateFormatter('%m-%d')
-    plt.gca().xaxis.set_major_formatter(date_format)
-    plt.ylabel('Count')
-    plt.legend()
+    dates = [record["created_at"].isoformat() for record in player_records]
+    return {"dates": dates, "goals": goals, "assists": assists}
 
-    # Save the plot to a BytesIO object
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    buf.seek(0)
 
-    # Encode the BytesIO object to base64 and embed it in HTML
-    string = base64.b64encode(buf.read())
-    uri = 'data:image/png;base64,' + urllib.parse.quote(string)
-    html = '<img src = "%s"/>' % uri
+@router.post('/suggestions')
+async def create_suggestion(suggestion: Suggestion, user=Depends(verify_jwt), db=Depends(get_db)):
+    collection = db["suggestions"]
+    suggestion_data = suggestion.dict()
+    suggestion_data["email"] = user['email']
+    result = await collection.insert_one(suggestion_data)
+    return {"id": str(result.inserted_id)}
 
-    return html
+@router.get("/profile")
+async def get_profile(user=Depends(verify_jwt), db=Depends(get_db)):
+    user = await db["users"].find_one({"email": user["email"]})
+    return fix_object_id(user)
 
-@router.get("/user")
-async def home_page(current_user= Depends(get_current_user),db=Depends(get_db)):
-    #find all entries in players collection of current user email
-    collection=db["entries"]
-    players=[]
-    async for player in collection.find({"email":current_user['email']}):
-        players.append(fix_object_id(player))
-    if not players:
-        return "No records found for this player"
-    return players
