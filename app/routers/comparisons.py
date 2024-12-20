@@ -5,7 +5,6 @@ from .temp import fix_object_id, maps_api_key
 import requests
 import pandas as pd
 import os
-import json
 import asyncio
 
 def get_db(request: Request):
@@ -42,10 +41,22 @@ async def get_player_leaderboard(period: str, db=Depends(get_db)):
     return df.to_dict(orient='records')
 
 
-# Maybe run a loop of this with different common areas of Mumbai, and save the results in a database to avoid
-#multiple API calls. 
-#Future API calls will be made to the database instead of the Google Places API. If the data is not found in the database,
-#then the API call will be made to the Google Places API.
+from math import radians, sin, cos, sqrt, atan2
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth's radius in kilometers
+
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    distance = R * c
+    
+    return round(distance, 2)
+
 @router.get("/turf_near_me")
 async def get_turf_near_me(lat: float, long: float):
     base_url = f'https://places.googleapis.com/v1/places:searchText'
@@ -63,12 +74,24 @@ async def get_turf_near_me(lat: float, long: float):
                 'radius': 2500.0
             }
         },
-        "maxResultCount": 15
+        "maxResultCount": 5
     }
     headers = {
         'X-Goog-FieldMask': 'places.displayName,places.location,places.googleMapsUri'
     }
     response = requests.post(base_url, params=params, json=request_body, headers=headers).json()
+    
+    # Add distance to each place
+    for place in response.get('places', []):
+        place['distance_km'] = calculate_distance(
+            lat, 
+            long,
+            place['location']['latitude'],
+            place['location']['longitude']
+        )
+    # Sort places by distance
+    response['places'] = sorted(response.get('places', []), key=lambda x: x['distance_km'])
+    
     return response
 
 
