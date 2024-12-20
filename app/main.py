@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 from dotenv import load_dotenv
-from .routers import players, comparisons, injuries, pitch
+from .routers import players, comparisons, injuries, friends
 import os
 from starlette.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -48,7 +48,7 @@ origins = [
 app.include_router(players.router)
 app.include_router(comparisons.router)
 app.include_router(injuries.router)
-app.include_router(pitch.router)
+app.include_router(friends.router, prefix='/friends', tags=['Friends'])
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"],
                    allow_headers=["*"])
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SECRET_KEY'))

@@ -7,8 +7,7 @@ from pydantic import BaseModel
 from bson import ObjectId
 from typing import Optional
 from datetime import datetime
-
-
+from fastapi import HTTPException
 class Suggestion(BaseModel):
     suggestion: str
 
