@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from .temp import fix_object_id, Player, verify_jwt
 from datetime import datetime, timedelta
+
 from starlette.requests import Request
 from pydantic import BaseModel
 from bson import ObjectId
@@ -78,7 +79,7 @@ async def get_players(db=Depends(get_db), user=Depends(verify_jwt),start_date: O
     return players
 
 
-@router.get("/visualize/")  # change matplotlib to plotly
+@router.get("/visualize/") 
 async def visualize(db=Depends(get_db), current_user=Depends(verify_jwt), start_date: Optional[str] = None, end_date: Optional[str] = None):
     collection = db["entries"]
     query = {
@@ -115,3 +116,4 @@ async def create_suggestion(suggestion: Suggestion, user=Depends(verify_jwt), db
 async def get_profile(user=Depends(verify_jwt), db=Depends(get_db)):
     user = await db["users"].find_one({"email": user["email"]})
     return fix_object_id(user)
+

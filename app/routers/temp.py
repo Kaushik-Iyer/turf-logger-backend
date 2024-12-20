@@ -57,4 +57,3 @@ class Player(BaseModel):
             "goals": self.goals,
             "assists": self.assists
         }
-
